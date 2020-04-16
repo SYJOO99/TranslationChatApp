@@ -1,6 +1,7 @@
 package com.example.mychatapp;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -8,6 +9,8 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.InputFilter;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -20,19 +23,32 @@ import android.widget.TextView;
 import com.bumptech.glide.Glide;
 import com.firebase.ui.database.FirebaseRecyclerAdapter;
 import com.firebase.ui.database.FirebaseRecyclerOptions;
+import com.google.android.gms.appinvite.AppInvite;
+import com.google.android.gms.appinvite.AppInviteInvitation;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.Query;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
 public class MainActivity extends AppCompatActivity implements GoogleApiClient.OnConnectionFailedListener {
 
+    private static final String TAG = MainActivity.class.getSimpleName();
+    private static final int REQUEST_INVITE = 1000;
+
+    private FirebaseRemoteConfig mFirebaseRemoteConfig;
     private FirebaseRecyclerAdapter<ChatMessage, MessageViewHolder> mFirebaseAdapter;
 
     private DatabaseReference mFirebaseDatabaseReference;
@@ -94,6 +110,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
         mGoogleApiClient = new GoogleApiClient.Builder(this)
                 .enableAutoManage(this, this)
                 .addApi(Auth.GOOGLE_SIGN_IN_API)
+                .addApi(AppInvite.API)
                 .build();
 
         mFirebaseAuth = FirebaseAuth.getInstance();
@@ -141,6 +158,51 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
 
         mMessageRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         mMessageRecyclerView.setAdapter(mFirebaseAdapter);
+
+        mFirebaseRemoteConfig = FirebaseRemoteConfig.getInstance();
+        FirebaseRemoteConfigSettings firebaseRemoteConfigSettings =
+                new FirebaseRemoteConfigSettings.Builder()
+                .setDeveloperModeEnabled(true)
+                .build();
+
+        Map<String, Object> defaultConfigMap = new HashMap<>();
+        defaultConfigMap.put("message_length", 10L);
+
+        mFirebaseRemoteConfig.setConfigSettings(firebaseRemoteConfigSettings);
+        mFirebaseRemoteConfig.setDefaults(defaultConfigMap);
+
+        fetchConfig();
+    }
+
+    private void fetchConfig() {
+        long catchExpiration = 3600;
+
+        if(mFirebaseRemoteConfig.getInfo().getConfigSettings().isDeveloperModeEnabled()){
+            catchExpiration = 0;
+        }
+
+        mFirebaseRemoteConfig.fetch(catchExpiration)
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        mFirebaseRemoteConfig.activateFetched();
+                        applyRetrievedLengthLimit();
+                    }
+                }).addOnFailureListener(new OnFailureListener() {
+            @Override
+            public void onFailure(@NonNull Exception e) {
+                Log.w(TAG, "Error Fetching config" + e.getMessage());
+                applyRetrievedLengthLimit();
+            }
+        });
+    }
+
+    private void applyRetrievedLengthLimit() {
+        Long messageLength = mFirebaseRemoteConfig.getLong("message_length");
+        mMessageEditText.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(messageLength.intValue())
+        });
+        Log.d(TAG, "메시지 길이: " + messageLength);
     }
 
     @Override
@@ -171,8 +233,32 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
                 startActivity(new Intent(this, SignInActivity.class));
                 finish();
                 return true;
+            case R.id.invitation_menu:
+                sendInvitation();
+                return true;
             default:
                 return super.onOptionsItemSelected(item);
+        }
+    }
+
+    private void sendInvitation() {
+        Intent intent = new AppInviteInvitation.IntentBuilder("초대 제목")
+                .setMessage("채팅앱에 초대합니다")
+                .setCallToActionText("채팅에 참여하기")
+                .build();
+        startActivityForResult(intent, REQUEST_INVITE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == REQUEST_INVITE){
+            if(resultCode == RESULT_OK){
+                String[] ids = AppInviteInvitation.getInvitationIds(resultCode, data);
+            }
+            else{
+
+            }
         }
     }
 }
