@@ -236,6 +236,9 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.O
             case R.id.invitation_menu:
                 sendInvitation();
                 return true;
+            case R.id.crash_menu:
+                //Crashlytics.getInstance().crash();
+                return true;
             default:
                 return super.onOptionsItemSelected(item);
         }

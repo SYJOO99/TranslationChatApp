@@ -10,4 +10,8 @@
         android:id="@+id/invitation_menu"
         android:title="앱 초대하기"
         app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/crash_menu"
+        android:title="버그 발생"
+        app:showAsAction="ifRoom"/>
 </menu>
